@@ -587,7 +587,7 @@ function merge(remote){let changed=false;for(const k in remote){const r=remote[k
 async function pull(){
   try{const r=await fetch(api+"?t="+Date.now(),{headers:hdr()});
     if(r.status===404){sha=null;setSync("מאגר ריק");return}
-    if(!r.ok){setSync(r.status===401?"קוד גישה שגוי":"שגיאת קריאה "+r.status,true);return}
+    if(!r.ok){setSync(!tok.value.trim()?"הזן קוד גישה כדי להתחבר למאגר":r.status===401?"קוד גישה שגוי":"שגיאת קריאה "+r.status,true);return}
     const j=await r.json();sha=j.sha;const remote=JSON.parse(b64dec(j.content)||"{}");
     if(merge(remote))render();
     localStorage.setItem(KEY,JSON.stringify(state));
