@@ -89,7 +89,7 @@ details.ex[open]>summary::before{transform:rotate(135deg)}
 <header><div class="wrap"><h1>סמכויות החובש — שאלות לבדיקה</h1><p class="sub">הוראת קרפ"ר 200.001 · יולי 2025</p></div></header>
 <div class="bar"><div class="wrap">
 <input id="who" placeholder="שם הבודק">
-<input id="tok" placeholder="קוד גישה" type="password" autocomplete="off">
+<input id="tok" type="hidden"><button id="lock" title="סיסמה">🔒</button>
 <button id="tog">פתח הכל</button>
 <button id="exp">ייצוא</button>
 <span class="sync" id="sync"></span>
@@ -558,7 +558,23 @@ const REPO="dginzburg10/hovesh-review";
 const who=document.getElementById("who"),tok=document.getElementById("tok"),syncEl=document.getElementById("sync");
 who.value=localStorage.getItem("hovesh-who")||"";tok.value=localStorage.getItem("hovesh-tok")||"";
 who.oninput=()=>localStorage.setItem("hovesh-who",who.value);
-tok.oninput=()=>{localStorage.setItem("hovesh-tok",tok.value);pullAll()};
+const VAULT={"s": "yu5ADj+5G1ggSkgsBNWYcQ==", "iv": "3riKD8WzOH05XzHD", "it": 400000, "ct": "NUJC6iTJufhDiGjL6RGObS3vul2+yT3RkYmDa1tywiHR8ZTTZMLQ56TmeArjrgTfVg84w6cupvw="};
+const ub=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function unlock(pw){
+  const km=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
+  const k=await crypto.subtle.deriveKey({name:"PBKDF2",salt:ub(VAULT.s),iterations:VAULT.it,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["decrypt"]);
+  const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:ub(VAULT.iv)},k,ub(VAULT.ct));
+  return new TextDecoder().decode(pt);
+}
+async function askPassword(){
+  for(let i=0;i<3;i++){
+    const pw=prompt(i?"סיסמה שגויה. נסה שוב:":"סיסמה:");
+    if(pw===null)return false;
+    try{tok.value=await unlock(pw.trim());localStorage.setItem("hovesh-tok",tok.value);return true}catch(e){}
+  }
+  alert("לא הצלחנו להתחבר. הדף במצב קריאה בלבד.");return false;
+}
+document.getElementById("lock").onclick=async()=>{await askPassword();pullAll()};
 const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 const fmt=t=>t?new Date(t).toLocaleDateString("he-IL")+" "+new Date(t).toLocaleTimeString("he-IL",{hour:"2-digit",minute:"2-digit"}):"";
 const now=()=>new Date().toISOString();
@@ -576,17 +592,17 @@ class Store{
   set(k,patch){this.data[k]={...(this.data[k]||{}),...patch,by:who.value||"?",at:now()};this.local();this.dirty=true;clearTimeout(this.t);this.t=setTimeout(()=>this.push(),1200)}
   del(k){this.data[k]={by:who.value||"?",at:now(),deleted:true};this.local();this.dirty=true;clearTimeout(this.t);this.t=setTimeout(()=>this.push(),300)}
   async push(){
-    if(!tok.value.trim()){setSync("לא נשמר במאגר — חסר קוד גישה",true);return}
+    if(!tok.value.trim()){setSync("לא נשמר — לחץ על המנעול להזנת סיסמה",true);return}
     setSync("שומר…");
     for(let i=0;i<3;i++){
       try{
         const g=await fetch(this.api+"?t="+Date.now(),{headers:hdr()});
-        if(g.ok){const j=await g.json();this.sha=j.sha;this.merge(JSON.parse(b64d(j.content)||"{}"))}else if(g.status!==404){setSync(g.status===401?"קוד גישה שגוי":"שגיאה "+g.status,true);return}
+        if(g.ok){const j=await g.json();this.sha=j.sha;this.merge(JSON.parse(b64d(j.content)||"{}"))}else if(g.status!==404){setSync(g.status===401?"סיסמה שגויה":"שגיאה "+g.status,true);return}
         const body={message:this.file+": "+(who.value||"?")+" "+now(),content:b64e(JSON.stringify(this.data,null,1))};if(this.sha)body.sha=this.sha;
         const p=await fetch(this.api,{method:"PUT",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify(body)});
         if(p.ok){this.sha=(await p.json()).content.sha;this.dirty=false;this.local();setSync("נשמר "+fmt(now()).split(" ")[1]);return}
         if(p.status===409||p.status===422)continue;
-        setSync(p.status===401?"קוד גישה שגוי":"שגיאת שמירה "+p.status,true);return
+        setSync(p.status===401?"סיסמה שגויה":"שגיאת שמירה "+p.status,true);return
       }catch(e){setSync("אין חיבור — נשמר מקומית",true);return}
     }
     setSync("התנגשות — נסה שוב",true);
@@ -596,8 +612,8 @@ const REV=new Store("reviews.json","hovesh-review-v2"),OVR=new Store("questions.
 
 async function pullAll(){
   try{const a=await REV.pull(),b=await OVR.pull();if(a||b)renderAll();
-    setSync(tok.value.trim()?"מסונכרן "+fmt(now()).split(" ")[1]:"קריאה בלבד — הזן קוד גישה");}
-  catch(s){setSync(!tok.value.trim()?"הזן קוד גישה כדי להתחבר":s===401?"קוד גישה שגוי":"שגיאת קריאה "+s,true)}
+    setSync(tok.value.trim()?"מסונכרן "+fmt(now()).split(" ")[1]:"קריאה בלבד");}
+  catch(s){setSync(!tok.value.trim()?"קריאה בלבד — לחץ על המנעול":s===401?"סיסמה שגויה":"שגיאת קריאה "+s,true)}
 }
 
 // ---- effective question = base + override ----
@@ -669,7 +685,7 @@ function stats(){
   for(const k in OVR.data)if(OVR.data[k].q&&!OVR.data[k].deleted)ed++;
   document.getElementById("stat").textContent=`${order.length} שאלות · מאושר ${ok} · דורש תיקון ${fix} · לא נבדק ${order.length-ok-fix}${ed?` · נערכו ${ed}`:""}`;
 }
-renderAll();pullAll();
+renderAll();(async()=>{if(!tok.value)await askPassword();pullAll()})();
 setInterval(()=>{if(!REV.dirty&&!OVR.dirty&&!document.querySelector(".ed")&&!["INPUT","TEXTAREA"].includes(document.activeElement.tagName))pullAll()},30000);
 document.getElementById("tog").onclick=e=>{const all=[...document.querySelectorAll("details.day")],o=all.some(d=>!d.open);all.forEach(d=>d.open=o);e.target.textContent=o?"סגור הכל":"פתח הכל"};
 document.getElementById("exp").onclick=()=>{
